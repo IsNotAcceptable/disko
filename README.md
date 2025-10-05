@@ -64,7 +64,7 @@ A simple disko configuration may look like this:
   disko.devices = {
     disk = {
       my-disk = {
-        device = "/dev/sda";
+        device = "/dev/sdb";
         type = "disk";
         content = {
           type = "gpt";
@@ -76,14 +76,20 @@ A simple disko configuration may look like this:
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
-                mountOptions = [ "umask=0077" ];
               };
             };
+	          swap = {
+              size = "8G";
+	            type = "8200";
+	            content = {
+                type = "swap";
+	            };
+	          };
             root = {
               size = "100%";
               content = {
                 type = "filesystem";
-                format = "ext4";
+                format = "btrfs";
                 mountpoint = "/";
               };
             };
