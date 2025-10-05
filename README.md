@@ -78,13 +78,13 @@ A simple disko configuration may look like this:
                 mountpoint = "/boot";
               };
             };
-	          swap = {
+		    swap = {
               size = "8G";
-	            type = "8200";
-	            content = {
+   			  type = "8200";
+              content = {
                 type = "swap";
-	            };
-	          };
+              };
+            };
             root = {
               size = "100%";
               content = {
