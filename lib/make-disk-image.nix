@@ -29,19 +29,18 @@ let
 
   vmTools = pkgs.vmTools.override (
     {
-      rootModules =
-        [
-          "9p"
-          "9pnet_virtio" # we can drop those in future if we stop supporting 24.11
+      rootModules = [
+        "9p"
+        "9pnet_virtio" # we can drop those in future if we stop supporting 24.11
 
-          "virtiofs"
-          "virtio_pci"
-          "virtio_blk"
-          "virtio_balloon"
-          "virtio_rng"
-        ]
-        ++ (lib.optional configSupportsZfs "zfs")
-        ++ cfg.extraRootModules;
+        "virtiofs"
+        "virtio_pci"
+        "virtio_blk"
+        "virtio_balloon"
+        "virtio_rng"
+      ]
+      ++ (lib.optional configSupportsZfs "zfs")
+      ++ cfg.extraRootModules;
       kernel = pkgs.aggregateModules (
         [
           cfg.kernelPackages.kernel
@@ -76,6 +75,7 @@ let
             disko.testMode = true;
             disko.devices = lib.mkForce cleanedConfig.disko.devices;
             boot.loader.grub.devices = lib.mkForce cleanedConfig.boot.loader.grub.devices;
+            boot.kernelPackages = lib.mkDefault cfg.kernelPackages;
             nixpkgs.hostPlatform = lib.mkForce pkgs.stdenv.hostPlatform;
             nixpkgs.buildPlatform = lib.mkForce pkgs.stdenv.hostPlatform;
           }
@@ -95,7 +95,6 @@ let
       util-linux
       findutils
       kmod
-      xcp
     ]
     ++ cfg.extraDependencies;
   preVM = ''
@@ -141,16 +140,35 @@ let
   installer = lib.optionalString cfg.copyNixStore ''
     ${binfmtSetup}
     unset NIX_REMOTE
+    # Resolve symlinks in rootMountPoint to satisfy nix-store requirements
+    # (nix refuses symlinks in store path hierarchy)
+    rootMountPoint=$(realpath ${lib.escapeShellArg systemToInstall.config.disko.rootMountPoint})
     # populate nix db, so nixos-install doesn't complain
-    export NIX_STATE_DIR=${systemToInstall.config.disko.rootMountPoint}/nix/var/nix
+    export NIX_STATE_DIR="$rootMountPoint"/nix/var/nix
     nix-store --load-db < "${closureInfo}/registration"
 
-    # We copy files with cp because `nix copy` seems to have a large memory leak
-    mkdir -p ${systemToInstall.config.disko.rootMountPoint}/nix/store
-    xargs xcp --recursive --target-directory ${systemToInstall.config.disko.rootMountPoint}/nix/store < ${closureInfo}/store-paths
+    # We copy files with cp because `nix copy` has a large memory leak.
+    # We use parallel cp instead of xcp because xcp opens many file descriptors
+    # concurrently, which we suspect can exhaust virtiofsd's fd limits.
+    # Benchmarks on AMD Ryzen AI 7 350 (16 cores) and AMD EPYC 9654 (384 cores)
+    # showed -P 8 is optimal: higher values (-P 16) hurt performance on some
+    # systems, while -P 4 is ~30% slower. Cap at 8 but use fewer workers if the
+    # system has fewer cores.
+    mkdir -p "$rootMountPoint"/nix/store
+    ${
+      if cfg.copyNixStoreThreads == "auto" then
+        ''
+          P=$(nproc); [ "$P" -gt 8 ] && P=8
+        ''
+      else
+        ''
+          P=${toString cfg.copyNixStoreThreads}
+        ''
+    }
+    xargs -P "$P" -I {} cp --recursive {} "$rootMountPoint"/nix/store < ${closureInfo}/store-paths
 
-    ${systemToInstall.config.system.build.nixos-install}/bin/nixos-install --root ${systemToInstall.config.disko.rootMountPoint} --system ${systemToInstall.config.system.build.toplevel} --keep-going --no-channel-copy -v --no-root-password --option binary-caches ""
-    umount -Rv ${lib.escapeShellArg systemToInstall.config.disko.rootMountPoint}
+    ${systemToInstall.config.system.build.nixos-install}/bin/nixos-install --root "$rootMountPoint" --system ${systemToInstall.config.system.build.toplevel} --keep-going --no-channel-copy -v --no-root-password --option binary-caches ""
+    umount -Rv "$rootMountPoint"
   '';
 
   QEMU_OPTS = lib.concatStringsSep " " (

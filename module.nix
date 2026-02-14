@@ -4,6 +4,7 @@
   pkgs,
   extendModules,
   diskoLib,
+  modulesPath,
   ...
 }:
 let
@@ -103,6 +104,18 @@ in
         type = lib.types.bool;
         description = "whether to copy the nix store into the disk images we just created";
         default = true;
+      };
+
+      copyNixStoreThreads = lib.mkOption {
+        type = lib.types.either lib.types.ints.positive (lib.types.enum [ "auto" ]);
+        description = ''
+          Number of parallel threads to use when copying the nix store.
+          Set to "auto" (the default) to automatically determine based on CPU cores,
+          capped at 8. Higher values may hurt performance on some systems due to
+          virtiofsd file descriptor limits.
+        '';
+        default = "auto";
+        example = 4;
       };
 
       extraConfig = lib.mkOption {
@@ -245,8 +258,9 @@ in
     _module.args.diskoLib = import ./lib {
       inherit lib;
       rootMountPoint = config.disko.rootMountPoint;
-      makeTest = import (pkgs.path + "/nixos/tests/make-test-python.nix");
-      eval-config = import (pkgs.path + "/nixos/lib/eval-config.nix");
+      makeTest = import "${modulesPath}/../tests/make-test-python.nix";
+      eval-config = import "${modulesPath}/../lib/eval-config.nix";
+      qemu-common = import "${modulesPath}/../lib/qemu-common.nix";
     };
 
     system.build =

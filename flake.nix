@@ -24,6 +24,9 @@
 
       diskoLib = import ./lib {
         inherit (nixpkgs) lib;
+        makeTest = import (nixpkgs + "/nixos/tests/make-test-python.nix");
+        eval-config = import (nixpkgs + "/nixos/lib/eval-config.nix");
+        qemu-common = import (nixpkgs + "/nixos/lib/qemu-common.nix");
       };
     in
     {
@@ -62,8 +65,9 @@
           nixosTests = lib.optionalAttrs pkgs.stdenv.hostPlatform.isx86_64 (
             import ./tests {
               inherit pkgs;
-              makeTest = import (pkgs.path + "/nixos/tests/make-test-python.nix");
-              eval-config = import (pkgs.path + "/nixos/lib/eval-config.nix");
+              makeTest = import (nixpkgs + "/nixos/tests/make-test-python.nix");
+              eval-config = import (nixpkgs + "/nixos/lib/eval-config.nix");
+              qemu-common = import (nixpkgs + "/nixos/lib/qemu-common.nix");
             }
           );
 
@@ -116,7 +120,7 @@
           text = ''treefmt "$@"'';
           runtimeInputs = [
             pkgs.deadnix
-            pkgs.nixfmt-rfc-style
+            pkgs.nixfmt
             pkgs.shellcheck
             pkgs.treefmt
           ];

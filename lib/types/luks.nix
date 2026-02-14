@@ -214,6 +214,7 @@ in
               cryptsetup close "${config.name}"
             fi
           '';
+          fs = lib.optionalAttrs (config.content != null) contentUnmount.fs or { };
         };
     };
     _config = lib.mkOption {
@@ -226,7 +227,8 @@ in
           {
             boot.initrd.luks.devices.${config.name} = {
               inherit (config) device;
-            } // config.settings;
+            }
+            // config.settings;
           }
         ])
         ++ (lib.optional (config.content != null) config.content._config);

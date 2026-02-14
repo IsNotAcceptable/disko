@@ -229,6 +229,8 @@ in
                             ''}
                             ${lib.optionalString hp.config.mbrBootableFlag ''
                               sfdisk --label-nested dos --activate "${parent.device}" ${(toString partition.config._index)}
+                              udevadm trigger --subsystem-match=block
+                              udevadm settle --timeout 120
                             ''}
                           '';
                         };
@@ -303,7 +305,7 @@ in
               --align-end ${
                 lib.optionalString (
                   partition.alignment != 0
-                ) ''--set-alignment=${builtins.toString partition.alignment}''
+                ) "--set-alignment=${builtins.toString partition.alignment}"
               } \
               --new=${toString partition._index}:${partition.start}:${partition.end} \
             '';

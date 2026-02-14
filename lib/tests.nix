@@ -2,6 +2,7 @@
   lib,
   makeTest,
   eval-config,
+  qemu-common-lib,
   ...
 }:
 
@@ -89,8 +90,14 @@ let
           args:
           makeTest args {
             inherit pkgs;
-            inherit (pkgs) system;
+            system = pkgs.stdenv.hostPlatform.system;
           };
+
+        # Get qemu-common library functions for this pkgs
+        qemu-common = qemu-common-lib pkgs;
+        # qemuBinary returns a string like: "/nix/store/.../qemu-system-x86_64 -machine accel=kvm:tcg -cpu max"
+        qemuBinaryString = qemu-common.qemuBinary pkgs.qemu_test;
+
         # for installation we skip /dev/vda because it is the test runner disk
 
         importedDiskoConfig = if builtins.isPath disko-config then import disko-config else disko-config;
@@ -140,7 +147,7 @@ let
 
         installed-system-eval = eval-config {
           modules = [ installed-system ];
-          inherit (pkgs) system;
+          system = pkgs.stdenv.hostPlatform.system;
         };
 
         installedTopLevel =
@@ -180,6 +187,9 @@ let
                     ];
                   };
                   boot.zfs.devNodes = "/dev/disk/by-uuid"; # needed because /dev/disk/by-id is empty in qemu-vms
+
+                  # Silence mdadm warning about missing MAILADDR or PROGRAM
+                  boot.swraid.mdadmConf = "PROGRAM ${pkgs.coreutils}/bin/true";
 
                   # grub will install to these devices, we need to force those or we are offset by 1
                   # we use mkOveride 70, so that users can override this with mkForce in case they are testing grub mirrored boots
@@ -227,21 +237,20 @@ let
               (
                 { config, ... }:
                 {
-                  boot.supportedFilesystems =
-                    [
-                      "btrfs"
-                      "cifs"
-                      "f2fs"
-                      "jfs"
-                      "ntfs"
-                      "reiserfs"
-                      "vfat"
-                      "xfs"
-                    ]
-                    ++ lib.optional (
-                      config.networking.hostId != null
-                      && lib.meta.availableOn pkgs.stdenv.hostPlatform config.boot.zfs.package
-                    ) "zfs";
+                  boot.supportedFilesystems = [
+                    "btrfs"
+                    "cifs"
+                    "f2fs"
+                    "jfs"
+                    "ntfs"
+                    "reiserfs"
+                    "vfat"
+                    "xfs"
+                  ]
+                  ++ lib.optional (
+                    config.networking.hostId != null
+                    && lib.meta.availableOn pkgs.stdenv.hostPlatform config.boot.zfs.package
+                  ) "zfs";
                 }
               )
 
@@ -288,6 +297,8 @@ let
         testScript =
           { nodes, ... }:
           ''
+            import shlex
+
             def disks(oldmachine, num_disks):
                 disk_flags = []
                 for i in range(num_disks):
@@ -302,10 +313,9 @@ let
             def create_test_machine(
                 oldmachine=None, **kwargs
             ):  # taken from <nixpkgs/nixos/tests/installer.nix>
-                start_command = [
-                    "${pkgs.qemu_test}/bin/qemu-kvm",
-                    "-cpu",
-                    "max",
+                # Use qemu-common from nixpkgs to get the proper QEMU binary with correct machine type and flags
+                # shlex.split properly handles the command string with options like "-machine virt,gic-version=max"
+                start_command = shlex.split("${qemuBinaryString}") + [
                     "-m",
                     "1024",
                     "-virtfs",
