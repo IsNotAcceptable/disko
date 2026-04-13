@@ -137,7 +137,7 @@ in
               var=$2
 
               echo -n "$prompt"
-              IFS= read -r -s "$var"
+              IFS= read -r -s "''${var?}"
               echo
             }
 
@@ -147,6 +147,7 @@ in
                 promptSecret "Enter password for ${config.device}: " password
                 promptSecret "Enter password for ${config.device} again to be safe: " password_check
                 export password
+                # shellcheck disable=SC2154
                 if [ "$password" != "$password_check" ]; then
                   exit 1
                 fi
